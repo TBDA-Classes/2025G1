@@ -4,11 +4,15 @@
 TRELLLO : https://trello.com/b/V8a6q0rS/tbda
 
 1. Project Overview
+
 Project Name: Understanding from Numerical Control Driven machine
+
 Business Case: To analyze information collected by the numerical control and stored in high frequency to bring human-understandable hints.
+
 Objective: Develop a user-friendly system that processes data, track energy use and generate alerts. 
 
 2. Scope
+
 In Scope : 
 •	Data collection and structuring from the Numerical Control Driven machine system.
 •	Analysis of the operational periods, sequences and energy metrics. 
