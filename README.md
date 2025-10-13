@@ -1,8 +1,7 @@
-# 2025G01
 
 # 2025G01
 
-Product Goal
+##Product Goal
 
 1. Project Overview
 Project Name: Understanding from Numerical Control Driven machine
