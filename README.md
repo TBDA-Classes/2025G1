@@ -1,7 +1,7 @@
 
 # 2025G01
 
-##Product Goal
+TRELLLO : https://trello.com/b/V8a6q0rS/tbda
 
 1. Project Overview
 Project Name: Understanding from Numerical Control Driven machine
