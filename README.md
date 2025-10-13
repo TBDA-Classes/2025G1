@@ -4,9 +4,9 @@
 TRELLLO : https://trello.com/b/V8a6q0rS/tbda
 
 TEAMS :
-    - UI/UX : Sandini, Lorenzo, Tim
-    - Data : Léo, Auxence, Jairo
-    - Backend : Anna, Tora, Gabrielle
+- UI/UX : Sandini, Lorenzo, Tim
+- Data : Léo, Auxence, Jairo
+- Backend : Anna, Tora, Gabrielle
 
 TIMELINE :
 - Sprint 1: 29/09/2025 – 12/10/2025 – Identify the relevant data from the database to have a clear dataset ready for use and analysis.
