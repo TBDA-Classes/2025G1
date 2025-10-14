@@ -3,7 +3,8 @@
 -- So doing the following analysis allows us to find a data-driven threshold by observing the natural distribution of the scores.
 
 -- Here we only calculate the activity score for each second and count how many times each score occurs, analysis is done outside SQL.
--- this SQL query counts the occurrences of each activity score from 0 to 16.
+-- this SQL query counts the occurrences of each activity score from 0 to 16. Out of the total seconds in that workday (from 06:00 to 22:00), 
+--the script calculated, on a per-second basis, the number of selected variables (out of 16) that had changed their value compared to the one before.
 -- find the output on the data folder as activity_score_distribution.csv
 
 WITH PivotedValues AS (
