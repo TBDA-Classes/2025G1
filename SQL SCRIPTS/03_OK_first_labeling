@@ -67,7 +67,7 @@ InstantaneousStates AS (
         ActivityScore
 ),
 PeriodStarts AS (
-    -- 4. Identify only the moments when the state changes (no changes to this logic).
+    -- 4. Identify only the moments when the state changes 
     SELECT
         timestamp,
         state_num
@@ -82,7 +82,7 @@ PeriodStarts AS (
     WHERE
         state_num <> previous_state
 )
--- 5. Build the final periods table with durations (no changes to this logic).
+-- 5. Build the final periods table with durations 
 SELECT
     CASE WHEN state_num = 1 THEN 'WORKING' ELSE 'STOPPED' END AS state,
     timestamp AS period_start,
