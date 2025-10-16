@@ -3,7 +3,7 @@
 -- PURPOSE: To identify the most relevant (most active) days for analysis.
 -- METHODOLOGY: This query counts the daily records in both the string and float log tables,
 -- then joins and sums them to create a total activity score for each day.
--- The results are ordered to show the most active days first.
+-- The results are ordered to show the most active days first and can be found on: data/days_relevance.xlsx
 
 WITH string_days AS (
     -- First, count the number of string log entries for each day.
