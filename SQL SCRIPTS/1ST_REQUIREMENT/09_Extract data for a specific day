@@ -1,1 +1,45 @@
--The idea here is to extract data for a specific day. Fir
+-The idea here is to extract data for a specific day.
+
+
+Variable_log_string - number of recordings per day :
+Code : 
+SELECT
+    to_char(date_trunc('day', to_timestamp(date / 1000.0)), 'YYYY-MM-DD') AS day,
+    COUNT(*) AS count
+FROM variable_log_string
+GROUP BY day
+ORDER BY count DESC;
+
+Variable_log_float - number of recordings per day :
+Code : 
+SELECT
+    to_char(date_trunc('day', to_timestamp(date / 1000.0)), 'YYYY-MM-DD') AS day,
+    COUNT(*) AS count
+FROM variable_log_float
+GROUP BY day
+ORDER BY count DESC;
+
+The days most relevant :
+Code :
+WITH string_days AS (
+    SELECT
+        to_char(date_trunc('day', to_timestamp(date / 1000.0)), 'YYYY-MM-DD') AS day,
+        COUNT(*) AS string_count
+    FROM variable_log_string
+    GROUP BY day
+),
+float_days AS (
+    SELECT
+        to_char(date_trunc('day', to_timestamp(date / 1000.0)), 'YYYY-MM-DD') AS day,
+        COUNT(*) AS float_count
+    FROM variable_log_float
+    GROUP BY day
+)
+SELECT
+    s.day,
+    s.string_count,
+    f.float_count,
+    (s.string_count + f.float_count) AS total_count
+FROM string_days s
+JOIN float_days f ON s.day = f.day
+ORDER BY total_count DESC;
