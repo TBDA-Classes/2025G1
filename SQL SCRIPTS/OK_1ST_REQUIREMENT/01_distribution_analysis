@@ -57,7 +57,7 @@ if data is not None:
     print(f"Intermediate: {thresh1_int} < distinct_vars_count <= {thresh2_int}")
     print(f"Active: distinct_vars_count > {thresh2_int}")
 
-    # OPTIONAL: VISUALIZE CLUSTERS (Helpful for understanding)
+    # VISUALIZE CLUSTERS 
     plt.figure(figsize=(10, 6))
     # Create histogram data
     counts, bins, _ = plt.hist(df['distinct_vars_count'], bins=range(int(df['distinct_vars_count'].min()), int(df['distinct_vars_count'].max()) + 2), alpha=0.5, label='Frequency Distribution')
