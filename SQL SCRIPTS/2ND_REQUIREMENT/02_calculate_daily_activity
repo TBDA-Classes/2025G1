@@ -18,25 +18,35 @@ WITH ordered AS (
   SELECT
     ts_utc,
     day,
-    value::integer AS state,
+    value::int AS state,
     LEAD(ts_utc) OVER (ORDER BY ts_utc) AS next_ts
   FROM v_log_float
   WHERE id_var = 660 AND value IN (0,1)
 ),
 intervals AS (
   SELECT
+    ts_utc,
     day,
     state,
-    EXTRACT(EPOCH FROM (COALESCE(next_ts, ts_utc) - ts_utc)) AS duration_s
+    -- cap segment at midnight (no spill over next day)
+    LEAST(next_ts, date_trunc('day', ts_utc) + INTERVAL '1 day') AS end_ts
   FROM ordered
   WHERE next_ts IS NOT NULL
+),
+split AS (
+  SELECT
+    day,
+    state,
+    EXTRACT(EPOCH FROM (end_ts - ts_utc)) AS duration_s
+  FROM intervals
+  WHERE end_ts > ts_utc
 )
 SELECT
   day,
-  ROUND(SUM(CASE WHEN state = 1 THEN duration_s ELSE 0 END)/3600,2) AS running_hours,
-  ROUND(SUM(CASE WHEN state = 0 THEN duration_s ELSE 0 END)/3600,2) AS stopped_hours,
+  ROUND(SUM(CASE WHEN state=1 THEN duration_s ELSE 0 END)/3600,2) AS running_hours,
+  ROUND(SUM(CASE WHEN state=0 THEN duration_s ELSE 0 END)/3600,2) AS stopped_hours,
   ROUND(SUM(duration_s)/3600,2) AS total_hours,
-  ROUND(SUM(CASE WHEN state = 1 THEN duration_s ELSE 0 END) / NULLIF(SUM(duration_s),0),3) AS uptime_ratio
-FROM intervals
+  ROUND(SUM(CASE WHEN state=1 THEN duration_s ELSE 0 END)/NULLIF(SUM(duration_s),0),3) AS uptime_ratio
+FROM split
 GROUP BY day
 ORDER BY day;
