@@ -1,0 +1,67 @@
+/* ===============================================================
+   PURPOSE: Rank "interesting" days using robust z-scores
+   over daily running/stopped hours and uptime ratio.
+
+   CONTEXT:
+   We reuse the daily activity table (from step 2)
+   and compute a deviation score for each metric (running, stopped, uptime)
+   based on median + MAD (robust method).
+   The sum of absolute z-scores defines how "unusual" each day is.
+==================================================================*/
+
+WITH daily AS (
+  WITH ordered AS (
+    SELECT ts_utc, day, value::int AS state,
+           LEAD(ts_utc) OVER (ORDER BY ts_utc) AS next_ts
+    FROM v_log_float
+    WHERE id_var = 660 AND value IN (0,1)
+  ),
+  intervals AS (
+    SELECT day, state,
+           EXTRACT(EPOCH FROM (COALESCE(next_ts, ts_utc) - ts_utc)) AS duration_s
+    FROM ordered
+    WHERE next_ts IS NOT NULL
+  )
+  SELECT day,
+         SUM(CASE WHEN state=1 THEN duration_s ELSE 0 END)/3600.0 AS running_h,
+         SUM(CASE WHEN state=0 THEN duration_s ELSE 0 END)/3600.0 AS stopped_h,
+         SUM(duration_s)/3600.0                                    AS total_h,
+         (SUM(CASE WHEN state=1 THEN duration_s ELSE 0 END) / NULLIF(SUM(duration_s),0)) AS uptime_ratio
+  FROM intervals
+  GROUP BY day
+),
+med AS (
+  SELECT
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY running_h)  AS med_run,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY stopped_h)  AS med_stop,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY uptime_ratio) AS med_up
+  FROM daily
+),
+mad AS (
+  SELECT
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(running_h   - (SELECT med_run  FROM med)))  AS mad_run,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(stopped_h   - (SELECT med_stop FROM med))) AS mad_stop,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(uptime_ratio- (SELECT med_up   FROM med))) AS mad_up
+  FROM daily
+),
+scored AS (
+  SELECT
+    d.*,
+    CASE WHEN (SELECT mad_run FROM mad)  > 0 THEN 0.6745*(running_h   - (SELECT med_run  FROM med))/(SELECT mad_run  FROM mad) ELSE 0 END AS z_run,
+    CASE WHEN (SELECT mad_stop FROM mad) > 0 THEN 0.6745*(stopped_h   - (SELECT med_stop FROM med))/(SELECT mad_stop FROM mad) ELSE 0 END AS z_stop,
+    CASE WHEN (SELECT mad_up FROM mad)   > 0 THEN 0.6745*(uptime_ratio- (SELECT med_up   FROM med))/(SELECT mad_up   FROM mad) ELSE 0 END AS z_up
+  FROM daily d
+)
+SELECT
+  day,
+  ROUND(running_h,2) AS running_hours,
+  ROUND(stopped_h,2) AS stopped_hours,
+  ROUND(total_h,2)   AS total_hours,
+  ROUND(uptime_ratio::numeric,3) AS uptime_ratio,
+  ROUND((abs(COALESCE(z_run,0)) + abs(COALESCE(z_stop,0)) + abs(COALESCE(z_up,0)))::numeric,3) AS interesting_score,
+  ROUND(z_run::numeric,2)  AS z_running,
+  ROUND(z_stop::numeric,2) AS z_stopped,
+  ROUND(z_up::numeric,2)   AS z_uptime
+FROM scored
+ORDER BY interesting_score DESC NULLS LAST, day DESC
+LIMIT 30;
