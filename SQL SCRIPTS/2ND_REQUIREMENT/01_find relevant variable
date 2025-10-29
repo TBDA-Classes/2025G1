@@ -1,1 +1,26 @@
+  PURPOSE: Identify the most relevant variable to represent
+   the actual machine operating state (running / stopped).
 
+   CONTEXT:
+   The tables "variable", "variable_log_float" and "variable_log_string"
+   contain hundreds of sensor signals. 
+   To later calculate running time, downtime, and detect
+   interesting or anomalous days, we first need to find
+   which variable truly reflects the machine’s activity status.
+
+--1st step :
+SELECT id, name FROM v_variable_tags WHERE is_state_like ORDER BY name;
+
+--2nd step : 
+SELECT id, name, datatype
+FROM variable
+WHERE id IN (536,575,597,660,828);
+
+--3rd step :
+SELECT * 
+FROM v_log_float 
+WHERE id_var = 660 
+ORDER BY ts_utc 
+LIMIT 200;
+
+--it returns only 0 and 1
