@@ -1,0 +1,5 @@
+{
+    "status": "error",
+    "message": "No data retrieved. Check dates, DB connection, or SQL execution.",
+    "data": null
+}
