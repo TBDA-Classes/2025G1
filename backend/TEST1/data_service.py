@@ -148,3 +148,36 @@ def get_energy_consumption(from_date: str, until_date: str) -> dict:
         "message": "Energy Consumption (ec) function not yet implemented.",
         "data": {"energy_kwh": 0, "co2_eq": 0}
     }
+def get_alarms(from_date: str, until_date: str) -> dict:
+    #TO BE IMPLEMENTED
+    """
+    PLACEHOLDER: Future function for alarms (al).
+    """
+    return {
+        "status": "success",
+        "period": {"from": from_date, "until": until_date},
+        "message": "Alarms (al) function not yet implemented.",
+        "data": {"total_alarms": 0, "critical_alarms": 0}
+    }
+def get_working_hours(from_date: str, until_date: str) -> dict:
+    #TO BE IMPLEMENTED
+    """
+    PLACEHOLDER: Future function for working hours (wh).
+    """
+    return {
+        "status": "success",
+        "period": {"from": from_date, "until": until_date},
+        "message": "Working Hours (wh) function not yet implemented.",
+        "data": {"total_working_hours": 0}
+    }
+def get_idle_times(from_date: str, until_date: str) -> dict:
+    #TO BE IMPLEMENTED
+    """
+    PLACEHOLDER: Future function for idle times (it).
+    """
+    return {
+        "status": "success",
+        "period": {"from": from_date, "until": until_date},
+        "message": "Idle Times (it) function not yet implemented.",
+        "data": {"total_idle_hours": 0}
+    }
