@@ -1,0 +1,35 @@
+-- PURPOSE: Get a smoothed list of active variable counts for K-Means.
+-- Applies a 15-second moving average to the per-second distinct count.
+-- this is the dataset to test k means on phyton
+  
+-- 1. Get the count of distinct variables per second (the "raw signal")
+WITH RawSignal AS (
+    SELECT
+        to_timestamp(floor(CAST(date AS BIGINT) / 1000)) AS timestamp,
+        COUNT(DISTINCT id_var) AS distinct_vars_count
+    FROM
+        public.variable_log_float
+    WHERE
+        to_timestamp(CAST(date AS BIGINT) / 1000) BETWEEN '2021-03-18 06:00:00' AND '2021-03-18 22:00:00'
+    GROUP BY
+        timestamp
+),
+-- 2. Apply the 15-second moving average to smooth the signal
+SmoothedSignal AS (
+    SELECT
+        timestamp,
+        AVG(distinct_vars_count) OVER (
+            ORDER BY timestamp
+            ROWS BETWEEN 14 PRECEDING AND CURRENT ROW -- 15-second trailing window
+        ) AS smoothed_count
+    FROM
+        RawSignal
+)
+-- 3. Select the smoothed data for export.
+-- We skip the first 14 seconds because their average is incomplete.
+SELECT
+    smoothed_count AS distinct_vars_count -- Rename column for the Python script
+FROM
+    SmoothedSignal
+WHERE
+    timestamp >= (SELECT MIN(timestamp) + interval '14 seconds' FROM SmoothedSignal);
