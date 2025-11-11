@@ -1,0 +1,9 @@
+SELECT DISTINCT "id_var", LEFT("value", 80) AS sample_value
+FROM "public"."variable_log_string"
+WHERE "value" ILIKE '%STOP%'
+   OR "value" ILIKE '%RUN%'
+   OR "value" ILIKE '%PARO%'
+   OR "value" ILIKE '%MARCHA%'
+   OR "value" ILIKE '%AUTO%'
+   OR "value" ILIKE '%START%'
+LIMIT 100;
