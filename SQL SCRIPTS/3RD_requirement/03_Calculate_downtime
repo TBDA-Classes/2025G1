@@ -1,6 +1,5 @@
 --We will identify the time intervals between each log of the variable 447, because it is this variable that records the major alarms.
 --We sort the logs by date, then calculate the time difference between one alarm and the next. This will give you the duration of inactivity or the time lapse between two events.
---need to be changed with the specific period
 
 SELECT
   id_var,
@@ -15,4 +14,7 @@ WHERE id_var = 447
   AND value <> '[]'
 ORDER BY date ASC
 LIMIT 200;
+
+--results : 
+--the exact date, the stop or error message, and a calculated column showing the difference in seconds compared to the previous log.
 
