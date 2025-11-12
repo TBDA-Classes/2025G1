@@ -1,4 +1,5 @@
 --We will identify the time intervals between each log of the variable 447, because it is this variable that records the major alarms.
+--We sort the logs by date, then calculate the time difference between one alarm and the next. This will give you the duration of inactivity or the time lapse between two events.
 --need to be changed with the specific period
 
 SELECT
