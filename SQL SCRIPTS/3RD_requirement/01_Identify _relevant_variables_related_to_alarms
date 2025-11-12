@@ -1,3 +1,9 @@
+--id_var = 447 → messages containing PLC errors, mentions of “PARADA”, “EMERGENCIA EXTERNA”, “CARREANDO ABIERTO”…
+--clearly the main variable for monitoring shutdowns.
+
+--id_var = 557 → also some error messages or file statuses.
+
+
 SELECT DISTINCT id_var, value
 FROM variable_log_string
 WHERE value ILIKE '%error%'
