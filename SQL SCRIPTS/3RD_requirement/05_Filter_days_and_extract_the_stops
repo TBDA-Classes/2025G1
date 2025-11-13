@@ -1,4 +1,5 @@
 --This gives, for each of the 10 relevant dates, the stops/gaps > 5 min with the time and a preview of the message
+--id 447 and 557
 
 WITH days AS (
   SELECT UNNEST(ARRAY[
