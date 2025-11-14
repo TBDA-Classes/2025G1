@@ -1,0 +1,19 @@
+{
+    "status": "success",
+    "period": {
+        "from": "2022-01-19",
+        "until": "2022-01-20"
+    },
+    "data": {
+        "status": "success",
+        "period": {
+            "from": "2022-01-19",
+            "until": "2022-01-20"
+        },
+        "totals_in_hours": {
+            "active": 12.5,
+            "intermediate": 8.2,
+            "idle": 45.3
+        }
+    }
+}
