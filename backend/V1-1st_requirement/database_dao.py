@@ -1,6 +1,10 @@
+import yaml
 import pandas as pd
 from sqlalchemy import create_engine, text
-from config import DB_CONFIG
+
+# Lecture du fichier config.yaml
+with open("config.yaml", "r") as file:
+    DB_CONFIG = yaml.safe_load(file)
 
 def get_engine():
     """Crée une connexion SQLAlchemy à la base PostgreSQL."""
