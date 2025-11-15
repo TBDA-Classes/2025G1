@@ -1,1 +1,81 @@
+-- PURPOSE: Calculate TOTAL time in 3 states (Low, Intermediate, High) across the ENTIRE dataset.
+-- METHODOLOGY: 15s moving average on COUNT(DISTINCT) per second.
+-- THRESHOLDS: Low <= 14, Intermediate <= 20, High > 20.
 
+WITH RawSignal AS (
+    -- 1. Get the raw count of distinct variables per second
+    SELECT
+        to_timestamp(floor(CAST(date AS BIGINT) / 1000)) AS timestamp,
+        COUNT(DISTINCT id_var) AS distinct_vars_count
+    FROM
+        public.variable_log_float
+    GROUP BY
+        timestamp
+),
+SmoothedSignal AS (
+    -- 2. Apply the 15-second moving average, restarting per day
+    SELECT
+        timestamp,
+        AVG(distinct_vars_count) OVER (
+            PARTITION BY date(timestamp)
+            ORDER BY timestamp
+            ROWS BETWEEN 14 PRECEDING AND CURRENT ROW
+        ) AS smoothed_count,
+        -- Skip the 14-second warm-up period for each day
+        ROW_NUMBER() OVER (PARTITION BY date(timestamp) ORDER BY timestamp) as row_num_per_day
+    FROM
+        RawSignal
+),
+InstantaneousStates AS (
+    -- 3. Classify each second using the validated thresholds
+    SELECT
+        timestamp,
+        CASE
+            WHEN smoothed_count <= 14 THEN 0 -- Low
+            WHEN smoothed_count <= 20 THEN 1 -- Intermediate
+            ELSE 2 -- High
+        END AS state_num
+    FROM
+        SmoothedSignal
+    WHERE
+        row_num_per_day > 14 -- Skip incomplete averages
+),
+PeriodStarts AS (
+    -- 4. Find the start of each new state period
+    SELECT
+        timestamp,
+        state_num
+    FROM (
+        SELECT
+            timestamp,
+            state_num,
+            LAG(state_num, 1, -1) OVER (ORDER BY timestamp) AS prev_state_num
+        FROM
+            InstantaneousStates
+    ) AS Subquery
+    WHERE
+        state_num <> prev_state_num
+),
+DetailedPeriods AS (
+    -- 5. Calculate duration for each period until the next one starts
+    SELECT
+        CASE
+            WHEN state_num = 0 THEN 'Low Activity'
+            WHEN state_num = 1 THEN 'Intermediate Activity'
+            ELSE 'High Activity'
+        END AS state_label,
+        -- The duration is the time until the *next* period starts
+        -- Use a subquery to find the absolute max time to close the final period
+        LEAD(timestamp, 1, (SELECT MAX(timestamp) + interval '1 second' FROM RawSignal)) 
+            OVER (ORDER BY timestamp) - timestamp AS duration
+    FROM
+        PeriodStarts
+)
+-- 6. Sum the totals
+SELECT
+    state_label,
+    SUM(duration) as total_duration
+FROM
+    DetailedPeriods
+GROUP BY
+    state_label;
