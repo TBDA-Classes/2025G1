@@ -1,103 +1,111 @@
-# data_service.py
 import pandas as pd
 from database_dao import run_query_data
 
-def get_state_times(from_date: str, until_date: str) -> dict:
-    """
-    Optimized version that avoids schema changes.
-    Keeps CAST(to_timestamp(...)) but simplifies and optimizes SQL logic.
-    """
+# NOTE IMPORTANTE : 
+# Les requêtes SQL ci-dessous ne sont que des exemples basés sur
+# les totaux agrégés. Vous devrez les ajuster si vos données
+# réelles du backend sont plus granulaires (par jour/machine).
 
+def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
+    """
+    Récupère le temps total passé dans chaque état d'activité
+    à partir de la Vue Matérialisée (ou de la table brute) entre deux dates.
+    """
+    # 🛑 REQUÊTE UTILISANT LA VUE MATÉRIALISÉE
+    # Nous utilisons la MV si elle existe, sinon nous pouvons revenir à la table brute
+    # Notez que la MV n'a pas de machine, elle donne juste un COUNT DISTINCT global.
     sql_query = """
-    WITH filtered AS (
-        SELECT
-            to_timestamp(CAST(date AS BIGINT)/1000) AS ts,
-            id_var
-        FROM public.variable_log_float
-        WHERE to_timestamp(CAST(date AS BIGINT)/1000)
-              BETWEEN :from_date AND :until_date
-    ),
-    counts AS (
-        SELECT
-            date_trunc('second', ts) AS ts_sec,
-            COUNT(DISTINCT id_var) AS distinct_vars
-        FROM filtered
-        GROUP BY 1
-    ),
-    states AS (
-        SELECT
-            ts_sec,
-            CASE
-                WHEN distinct_vars <= 17 THEN 'Idle'
-                WHEN distinct_vars <= 24 THEN 'Intermediate'
-                ELSE 'Active'
-            END AS state,
-            CASE
-                WHEN distinct_vars <= 17 THEN 0
-                WHEN distinct_vars <= 24 THEN 1
-                ELSE 2
-            END AS state_num
-        FROM counts
-    ),
-    transitions AS (
-        SELECT
-            ts_sec AS timestamp,
-            state,
-            state_num,
-            LAG(state_num) OVER (ORDER BY ts_sec) AS prev_state
-        FROM states
-    ),
-    state_periods AS (
-        SELECT
-            timestamp,
-            state,
-            state_num
-        FROM transitions
-        WHERE prev_state IS DISTINCT FROM state_num
-    ),
-    durations AS (
-        SELECT
-            state,
-            LEAD(timestamp, 1, (SELECT MAX(ts_sec) FROM states)) 
-                OVER (ORDER BY timestamp) - timestamp AS duration
-        FROM state_periods
-    )
     SELECT
-        state,
-        ROUND(EXTRACT(EPOCH FROM SUM(duration)) / 3600.0, 2) AS "Duration(Hours)"
-    FROM durations
-    GROUP BY state
-    ORDER BY state;
+        t1.timestamp::date AS date,
+        SUM(t1.distinct_vars_count) AS operating_count
+    FROM
+        variable_counts_per_second t1
+    WHERE
+        t1.timestamp >= :start_date AND t1.timestamp <= :end_date
+    GROUP BY
+        1
+    ORDER BY
+        1;
     """
-
-    params = {"from_date": from_date, "until_date": until_date}
-    result_df = run_query_data(sql_query, params)
-
-    if result_df.empty:
-        return {
-            "status": "error",
-            "message": "No data retrieved. Check dates, DB connection, or SQL execution.",
-            "data": None
-        }
-
-    pivot_data = result_df.set_index('state')['Duration(Hours)'].to_dict()
-
-    return {
-        "status": "success",
-        "period": {"from": from_date, "until": until_date},
-        "totals_in_hours": {
-            "active": round(pivot_data.get('Active', 0), 2),
-            "intermediate": round(pivot_data.get('Intermediate', 0), 2),
-            "idle": round(pivot_data.get('Idle', 0), 2)
-        }
-    }
+    
+    # Pour simuler les colonnes Operating et Standby du front-end, nous allons générer des données factices
+    # basées sur le résultat pour maintenir la compatibilité de l'interface.
+    params = {"start_date": from_date, "end_date": until_date}
+    df = run_query_data(sql_query, params)
+    
+    # Si la MV est vide ou n'est pas encore prête, retournez un DataFrame vide ou utilisez la simulation
+    if df.empty:
+        # Retour à une structure compatible avec la simulation si les données réelles sont absentes
+        return pd.DataFrame(columns=['date', 'machine', 'Operating', 'Standby'])
 
 
-def get_energy_consumption(from_date: str, until_date: str) -> dict:
-    """Placeholder for energy consumption."""
-    return {
-        "status": "success",
-        "period": {"from": from_date, "until": until_date},
-        "message": "Energy Consumption (ec) function not yet implemented.",
-        "data": {"energy_kwh": 0, "co2_eq": 0}
-    }
+    # --- SIMULATION POUR COMPATIBILITÉ AVEC L'INTERFACE STREAMLIT ---
+    # L'interface Streamlit s'attend à 'machine', 'Operating', 'Standby' par jour.
+    # Nous simulons cette granularité à partir du count global.
+    
+    # Définition des machines (doit correspondre à app.py)
+    MACHINES = ["Machine A", "Machine B", "Machine C"]
+    
+    rows = []
+    for index, row in df.iterrows():
+        # Heures totales disponibles par jour (ex: 24h)
+        total_seconds_in_day = 8 * 3600 # 8 heures de travail pour la démo
+        total_count = row['operating_count']
+        
+        # Répartition arbitraire de l'activité sur les machines
+        for machine in MACHINES:
+            # Simuler l'activité de la machine proportionnelle au count
+            operating_hours = (total_count / 1000) / len(MACHINES) # Normalisation factice
+            operating_hours = max(1, min(7.5, operating_hours)) # Plage raisonnable 1h à 7.5h
+            standby_hours = max(0, 8 - operating_hours - 0.5) # Temps d'inactivité
+            
+            rows.append({
+                "date": row['date'],
+                "machine": machine,
+                "Operating": operating_hours,
+                "Standby": standby_hours,
+            })
+            
+    return pd.DataFrame(rows)
+    # -----------------------------------------------------------------
+
+
+def get_energy_consumption(from_date: str, until_date: str) -> pd.DataFrame:
+    """
+    Récupère la consommation d'énergie entre deux dates.
+    (La requête SQL doit être ajustée en fonction de la structure de votre table d'énergie).
+    """
+    # Exemple de requête (assumant une table 'energy_log' et une agrégation horaire)
+    sql_query = """
+    SELECT
+        date_trunc('day', energy_timestamp) AS date,
+        machine_id,
+        SUM(kwh_value) AS total_energy_kwh
+    FROM
+        public.energy_log
+    WHERE
+        energy_timestamp >= :start_date AND energy_timestamp <= :end_date
+    GROUP BY
+        1, 2
+    ORDER BY
+        1;
+    """
+    # Ici, nous retournons des données factices pour l'énergie car la table réelle n'existe pas dans notre contexte
+    # VOUS DEVEZ REMPLACER CE QUI SUIT PAR L'APPEL RÉEL À VOTRE BASE :
+    # params = {"start_date": from_date, "end_date": until_date}
+    # return run_query_data(sql_query, params)
+    
+    # --- SIMULATION (Basée sur l'ancienne fonction generate_energy_data pour compatibilité) ---
+    from app import generate_energy_data, datetime
+    
+    df_energy_full = generate_energy_data()
+    
+    start_dt = datetime.strptime(from_date.split(" ")[0], "%Y-%m-%d").date()
+    end_dt = datetime.strptime(until_date.split(" ")[0], "%Y-%m-%d").date()
+    
+    df_filtered = df_energy_full[
+        (df_energy_full["date"] >= start_dt) &
+        (df_energy_full["date"] <= end_dt)
+    ]
+    return df_filtered
+    # ----------------------------------------------------------------------------------------

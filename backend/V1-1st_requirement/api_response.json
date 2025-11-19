@@ -1,19 +1,20 @@
 {
     "status": "success",
     "period": {
-        "from": "2022-01-19",
-        "until": "2022-01-20"
+        "from": "2021-02-01",
+        "until": "2021-02-12"
     },
     "data": {
         "status": "success",
         "period": {
-            "from": "2022-01-19",
-            "until": "2022-01-20"
+            "from": "2021-02-01",
+            "until": "2021-02-12"
         },
         "totals_in_hours": {
-            "active": 12.5,
-            "intermediate": 8.2,
-            "idle": 45.3
+            "high_activity": 18.73,
+            "intermediate_activity": 17.65,
+            "low_activity": 72.31,
+            "true_idle_off": 144.19
         }
     }
 }
