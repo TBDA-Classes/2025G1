@@ -1,0 +1,26 @@
+WITH candidates AS (
+  SELECT id, name, datatype
+  FROM public.variable
+  WHERE name ILIKE ANY (
+    ARRAY['%power%','%energy%','%kwh%','%kw%','%watt%','%consum%','%voltage%','%current%','%amp%','%pf%','%cos%phi%']
+  )
+)
+SELECT
+  c.id,
+  c.name,
+  c.datatype,
+  COALESCE(f.cnt,0) AS float_rows,
+  COALESCE(s.cnt,0) AS string_rows
+FROM candidates c
+LEFT JOIN (
+  SELECT id_var, COUNT(*) AS cnt
+  FROM public.variable_log_float
+  GROUP BY id_var
+) f ON f.id_var = c.id
+LEFT JOIN (
+  SELECT id_var, COUNT(*) AS cnt
+  FROM public.variable_log_string
+  GROUP BY id_var
+) s ON s.id_var = c.id
+ORDER BY (COALESCE(f.cnt,0) + COALESCE(s.cnt,0)) DESC, c.name
+LIMIT 100;
