@@ -1,3 +1,15 @@
+-- ============================================================================
+--  ALARM RECONSTRUCTION & STATISTICS (from variable 447 - string alarms)
+--
+--  This script parses all encoded alarm messages stored in variable 447,
+--  rebuilds continuous alarm periods (so repeated entries are merged), and
+--  computes aggregated statistics: number of occurrences, total duration,
+--  and average duration per alarm type.
+--
+--  Output = one row per unique alarm_code + alarm_text with full metrics.
+-- ============================================================================
+
+
 WITH alarm_snapshots AS (
     -- All snapshots of ALARMS (id = 447)
     SELECT
