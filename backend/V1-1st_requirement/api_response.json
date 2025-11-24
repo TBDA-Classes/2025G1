@@ -1,20 +1,46 @@
 {
     "status": "success",
     "period": {
-        "from": "2021-02-01",
-        "until": "2021-02-12"
+        "from": "2022-01-19",
+        "until": "2022-01-20"
     },
-    "data": {
-        "status": "success",
-        "period": {
-            "from": "2021-02-01",
-            "until": "2021-02-12"
+    "count": 6,
+    "data": [
+        {
+            "date": "2022-01-19",
+            "machine": "Machine A",
+            "Operating": 7.5,
+            "Standby": 0.0
         },
-        "totals_in_hours": {
-            "high_activity": 18.73,
-            "intermediate_activity": 17.65,
-            "low_activity": 72.31,
-            "true_idle_off": 144.19
+        {
+            "date": "2022-01-19",
+            "machine": "Machine B",
+            "Operating": 7.5,
+            "Standby": 0.0
+        },
+        {
+            "date": "2022-01-19",
+            "machine": "Machine C",
+            "Operating": 7.5,
+            "Standby": 0.0
+        },
+        {
+            "date": "2022-01-20",
+            "machine": "Machine A",
+            "Operating": 1.0,
+            "Standby": 6.5
+        },
+        {
+            "date": "2022-01-20",
+            "machine": "Machine B",
+            "Operating": 1.0,
+            "Standby": 6.5
+        },
+        {
+            "date": "2022-01-20",
+            "machine": "Machine C",
+            "Operating": 1.0,
+            "Standby": 6.5
         }
-    }
+    ]
 }

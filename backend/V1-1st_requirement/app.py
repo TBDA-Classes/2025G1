@@ -1,6 +1,6 @@
-# app.py
 import argparse
 import json
+import pandas as pd
 from data_service import get_state_times, get_energy_consumption
 
 def main():
@@ -13,15 +13,51 @@ def main():
     print("\n--- Interface / Terminal Request ---")
     print(f"REQUEST: Data type '{args.datatype}' from {args.from_date} to {args.until_date}")
 
-    if args.datatype == "wh":
-        data_result = get_state_times(args.from_date, args.until_date)
-    else:
-        data_result = get_energy_consumption(args.from_date, args.until_date)
+    # 1. Récupération du DataFrame (Pandas)
+    try:
+        if args.datatype == "wh":
+            df = get_state_times(args.from_date, args.until_date)
+        else:
+            df = get_energy_consumption(args.from_date, args.until_date)
+            
+        # Statut de base
+        status = "success"
+        
+    except Exception as e:
+        # En cas d'erreur SQL ou code, on crée un DF vide et on log l'erreur
+        print(f"Error executing query: {e}")
+        df = pd.DataFrame()
+        status = "error"
 
+    # 2. Préparation des données pour JSON (Correction de l'erreur de sérialisation)
+    data_list = []
+    
+    if not df.empty:
+        # IMPORTANT: Convertir les objets Date/Timestamp en string pour éviter l'erreur JSON
+        # On cherche les colonnes de type datetime et on les convertit
+        for col in df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+            df[col] = df[col].astype(str)
+            
+        # Si vous avez une colonne nommée 'date' qui n'est pas détectée, forcez-la :
+        if 'date' in df.columns:
+            df['date'] = df['date'].astype(str)
+
+        # Conversion du DataFrame en liste de dictionnaires
+        # Exemple : [{"date": "2022...", "val": 10}, {"date": "2022...", "val": 12}]
+        data_list = df.to_dict(orient='records')
+    else:
+        if status == "success":
+            status = "no_data"
+
+    # 3. Construction de la réponse
     response = {
-        "status": data_result.get("status", "error"),
-        "period": data_result.get("period", {"from": args.from_date, "until": args.until_date}),
-        "data": data_result
+        "status": status,
+        "period": {
+            "from": args.from_date, 
+            "until": args.until_date
+        },
+        "count": len(data_list),
+        "data": data_list  # On passe la liste convertie, pas le DataFrame brut
     }
 
     print("\n--- JSON Response for Interface ---\n")
