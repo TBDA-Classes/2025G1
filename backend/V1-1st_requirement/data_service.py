@@ -1,19 +1,19 @@
 import pandas as pd
 from database_dao import run_query_data
 
-# NOTE IMPORTANTE : 
-# Les requêtes SQL ci-dessous ne sont que des exemples basés sur
-# les totaux agrégés. Vous devrez les ajuster si vos données
-# réelles du backend sont plus granulaires (par jour/machine).
+# IMPORTANT NOTE: 
+# The SQL queries below are just examples based on aggregated totals. 
+# You will need to adjust them if your actual backend data is more 
+# granular (per day/machine).
 
 def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
     """
-    Récupère le temps total passé dans chaque état d'activité
-    à partir de la Vue Matérialisée (ou de la table brute) entre deux dates.
+    Retrieves the total time spent in each activity state
+    from the Materialized View (or raw table) between two dates.
     """
-    # 🛑 REQUÊTE UTILISANT LA VUE MATÉRIALISÉE
-    # Nous utilisons la MV si elle existe, sinon nous pouvons revenir à la table brute
-    # Notez que la MV n'a pas de machine, elle donne juste un COUNT DISTINCT global.
+    # 🛑 QUERY USING THE MATERIALIZED VIEW
+    # We use the MV if it exists, otherwise we can revert to the raw table.
+    # Note that the MV does not have machine detail, it just gives a global COUNT DISTINCT.
     sql_query = """
     SELECT
         t1.timestamp::date AS date,
@@ -28,36 +28,36 @@ def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
         1;
     """
     
-    # Pour simuler les colonnes Operating et Standby du front-end, nous allons générer des données factices
-    # basées sur le résultat pour maintenir la compatibilité de l'interface.
+    # To simulate the Operating and Standby columns for the frontend, we will generate dummy data
+    # based on the result to maintain interface compatibility.
     params = {"start_date": from_date, "end_date": until_date}
     df = run_query_data(sql_query, params)
     
-    # Si la MV est vide ou n'est pas encore prête, retournez un DataFrame vide ou utilisez la simulation
+    # If the MV is empty or not yet ready, return an empty DataFrame or use the simulation
     if df.empty:
-        # Retour à une structure compatible avec la simulation si les données réelles sont absentes
+        # Return to a structure compatible with the simulation if real data is missing
         return pd.DataFrame(columns=['date', 'machine', 'Operating', 'Standby'])
 
 
-    # --- SIMULATION POUR COMPATIBILITÉ AVEC L'INTERFACE STREAMLIT ---
-    # L'interface Streamlit s'attend à 'machine', 'Operating', 'Standby' par jour.
-    # Nous simulons cette granularité à partir du count global.
+    # --- SIMULATION FOR STREAMLIT INTERFACE COMPATIBILITY ---
+    # The Streamlit interface expects 'machine', 'Operating', 'Standby' per day.
+    # We simulate this granularity from the global count.
     
-    # Définition des machines (doit correspondre à app.py)
+    # Machine definition (must match app.py)
     MACHINES = ["Machine A", "Machine B", "Machine C"]
     
     rows = []
     for index, row in df.iterrows():
-        # Heures totales disponibles par jour (ex: 24h)
-        total_seconds_in_day = 8 * 3600 # 8 heures de travail pour la démo
+        # Total available hours per day (ex: 24h)
+        total_seconds_in_day = 8 * 3600 # 8 working hours for the demo
         total_count = row['operating_count']
         
-        # Répartition arbitraire de l'activité sur les machines
+        # Arbitrary distribution of activity across machines
         for machine in MACHINES:
-            # Simuler l'activité de la machine proportionnelle au count
-            operating_hours = (total_count / 1000) / len(MACHINES) # Normalisation factice
-            operating_hours = max(1, min(7.5, operating_hours)) # Plage raisonnable 1h à 7.5h
-            standby_hours = max(0, 8 - operating_hours - 0.5) # Temps d'inactivité
+            # Simulate machine activity proportional to the count
+            operating_hours = (total_count / 1000) / len(MACHINES) # Fake normalization
+            operating_hours = max(1, min(7.5, operating_hours)) # Reasonable range 1h to 7.5h
+            standby_hours = max(0, 8 - operating_hours - 0.5) # Inactivity time
             
             rows.append({
                 "date": row['date'],
@@ -72,10 +72,10 @@ def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
 
 def get_energy_consumption(from_date: str, until_date: str) -> pd.DataFrame:
     """
-    Récupère la consommation d'énergie entre deux dates.
-    (La requête SQL doit être ajustée en fonction de la structure de votre table d'énergie).
+    Retrieves energy consumption between two dates.
+    (The SQL query needs to be adjusted based on your energy table structure).
     """
-    # Exemple de requête (assumant une table 'energy_log' et une agrégation horaire)
+    # Example query (assuming an 'energy_log' table and hourly aggregation)
     sql_query = """
     SELECT
         date_trunc('day', energy_timestamp) AS date,
@@ -90,12 +90,12 @@ def get_energy_consumption(from_date: str, until_date: str) -> pd.DataFrame:
     ORDER BY
         1;
     """
-    # Ici, nous retournons des données factices pour l'énergie car la table réelle n'existe pas dans notre contexte
-    # VOUS DEVEZ REMPLACER CE QUI SUIT PAR L'APPEL RÉEL À VOTRE BASE :
+    # Here, we return dummy data for energy because the real table doesn't exist in our context
+    # YOU MUST REPLACE THE FOLLOWING WITH THE REAL CALL TO YOUR DATABASE:
     # params = {"start_date": from_date, "end_date": until_date}
     # return run_query_data(sql_query, params)
     
-    # --- SIMULATION (Basée sur l'ancienne fonction generate_energy_data pour compatibilité) ---
+    # --- SIMULATION (Based on the old generate_energy_data function for compatibility) ---
     from app import generate_energy_data, datetime
     
     df_energy_full = generate_energy_data()

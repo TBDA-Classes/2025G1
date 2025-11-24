@@ -2,28 +2,28 @@ import yaml
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-# Lecture du fichier config.yaml (Assurez-vous qu'il contient vos identifiants)
+# Reading the config.yaml file (Make sure it contains your credentials)
 with open("config.yaml", "r") as file:
     DB_CONFIG = yaml.safe_load(file)
 
 def get_engine():
-    """Crée une connexion SQLAlchemy à la base PostgreSQL."""
+    """Creates a SQLAlchemy connection to the PostgreSQL database."""
     try:
         engine = create_engine(
             f"postgresql+psycopg2://{DB_CONFIG['DB_USER']}:{DB_CONFIG['DB_PASSWORD']}@"
             f"{DB_CONFIG['DB_HOST']}:{DB_CONFIG['DB_PORT']}/{DB_CONFIG['DB_NAME']}"
         )
-        # Ne pas imprimer la connexion réussie dans un environnement de production/Streamlit
+        # Do not print successful connection in a production/Streamlit environment
         # print(f"✅ SUCCESS: Connected to {DB_CONFIG['DB_HOST']}...") 
         return engine
     except Exception as e:
         print(f"❌ ERROR: Database connection failed - {e}")
-        # Optionnel : Rendre l'erreur visible dans Streamlit pour débogage
+        # Optional: Make the error visible in Streamlit for debugging
         raise
 
 def run_query_data(sql_query: str, params: dict) -> pd.DataFrame:
     """
-    Exécute une requête SELECT avec paramètres et renvoie un DataFrame.
+    Executes a SELECT query with parameters and returns a DataFrame.
     """
     try:
         engine = get_engine()
@@ -35,16 +35,16 @@ def run_query_data(sql_query: str, params: dict) -> pd.DataFrame:
         print(f"SQLAlchemy Error (SELECT): {e}")
         return pd.DataFrame()
 
-# NOUVELLE FONCTION : Exécute une commande sans résultat
+# NEW FUNCTION: Executes a command without result
 def execute_sql_command(sql_command: str):
     """
-    Exécute une commande SQL (CREATE, REFRESH, INSERT, etc.) qui ne retourne pas de DataFrame.
+    Executes an SQL command (CREATE, REFRESH, INSERT, etc.) that does not return a DataFrame.
     """
     try:
         engine = get_engine()
         with engine.connect() as connection:
             connection.execute(text(sql_command))
-            connection.commit() # Important pour les commandes DDL/DML
+            connection.commit() # Important for DDL/DML commands
             # print(f"✅ SUCCESS: Command executed: {sql_command.splitlines()[0].strip()}...")
         return True
     except Exception as e:
