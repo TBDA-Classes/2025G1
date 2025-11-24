@@ -1,0 +1,13 @@
+SELECT v.id, v.name, COUNT(l.id_var) AS nb_mesures, 'variable_log_float' AS source
+FROM variable v
+LEFT JOIN variable_log_float l ON v.id = l.id_var
+WHERE v.id IN (466, 630, 738, 623)
+GROUP BY v.id, v.name
+
+UNION ALL
+
+SELECT v.id, v.name, COUNT(l.id_var) AS nb_mesures, 'variable_log_string' AS source
+FROM variable v
+LEFT JOIN variable_log_string l ON v.id = l.id_var
+WHERE v.id IN (466, 630, 738, 623)
+GROUP BY v.id, v.name;
