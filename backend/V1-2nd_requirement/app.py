@@ -77,11 +77,13 @@ def main():
     }
 
     print("\n--- JSON Response for Interface ---\n")
+    # CORRECTION ICI : ensure_ascii=False permet d'afficher les accents dans le terminal
     print(json.dumps(response, indent=4, ensure_ascii=False))
     print("\n----------------------------------------")
     print("The JSON response file is available here: api_response.json")
 
     with open("api_response.json", "w", encoding="utf-8") as f:
+        # CORRECTION ICI AUSSI : ensure_ascii=False permet d'écrire les accents dans le fichier
         json.dump(response, f, indent=4, ensure_ascii=False)
 
 if __name__ == "__main__":
