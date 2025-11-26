@@ -29,12 +29,10 @@ def run_query_data(sql_query: str, params: dict) -> pd.DataFrame:
     try:
         engine = get_engine()
         with engine.connect() as connection:
-            # Utilisation de text() pour sécuriser la requête brute
             df = pd.read_sql_query(text(sql_query), connection, params=params)
         return df
 
     except Exception as e:
-        # On retourne un DF vide en cas d'erreur pour ne pas crasher l'app
         print(f"SQLAlchemy Error (SELECT): {e}")
         return pd.DataFrame()
 
