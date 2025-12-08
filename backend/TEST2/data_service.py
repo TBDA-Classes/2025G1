@@ -1,203 +1,95 @@
 import pandas as pd
-from datetime import datetime
-from database_dao import run_query_data
+import numpy as np
+from datetime import datetime, timedelta
 
-def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
-    """
-    Calculates the total time (in Hours) spent in each state.
-    Version: FAST & HONEST (No fake data filling).
-    """
+# ==========================================
+# 1. CATALOGUE D'ALARMES (Règles Métier)
+# ==========================================
+# Traduction et classification des alarmes basées sur tes captures d'écran
+ALARM_CATALOG = {
+    # --- SAFETY & CRITICAL (ROUGE) ---
+    "PLC00501": {"severity": "CRITICAL", "category": "SAFETY", "desc": "External Emergency Stop"},
+    "230-0005": {"severity": "CRITICAL", "category": "SAFETY", "desc": "External Emergency Stop (Remote)"},
+    "PLC01004": {"severity": "CRITICAL", "category": "SAFETY", "desc": "Machine Emergency Button Pressed"},
+    "230-00fd": {"severity": "CRITICAL", "category": "AXIS",   "desc": "Limit Switch Hit (Axis Over-travel)"},
+    "PLC00532": {"severity": "CRITICAL", "category": "ATC",    "desc": "Tool Magazine Misalignment"},
+    "PLC00853": {"severity": "CRITICAL", "category": "ATC",    "desc": "ATC Interruption Error"},
+
+    # --- WARNINGS (ORANGE) ---
+    "PLC00010": {"severity": "WARNING",  "category": "DOOR",   "desc": "Door Open"},
+    "PLC01005": {"severity": "WARNING",  "category": "DOOR",   "desc": "Enclosure Door Open"},
+    "PLC00739": {"severity": "WARNING",  "category": "DOOR",   "desc": "Enclosure Open in Mode 3"},
+    "PLC00474": {"severity": "WARNING",  "category": "OPS",    "desc": "Handwheel Required (Door Open)"},
+    "PLC00661": {"severity": "WARNING",  "category": "FLUIDS", "desc": "Oil Recovery Tank Full"},
+    "PLC00491": {"severity": "WARNING",  "category": "MAINT",  "desc": "Rotary Joint Lubrication Required"},
+    "PLC00655": {"severity": "WARNING",  "category": "MAINT",  "desc": "Retighten Tool Clamping Collets"},
+    "130-009e": {"severity": "WARNING",  "category": "SYSTEM", "desc": "File Access Impossible"},
+    "240-07d2": {"severity": "WARNING",  "category": "SYSTEM", "desc": "Incorrect File Type"},
+
+    # --- INFO (BLEU/GRIS) ---
+    "PLC00054": {"severity": "INFO",     "category": "OPS",    "desc": "Feedrate Override at 0%"},
+    "PLC00499": {"severity": "INFO",     "category": "OPS",    "desc": "Feed Hold Active"},
+    "PLC00051": {"severity": "INFO",     "category": "OPS",    "desc": "M01 Conditional Stop"},
+    "PLC00050": {"severity": "INFO",     "category": "OPS",    "desc": "M00 Program Stop"},
+    "320-0064": {"severity": "INFO",     "category": "SYSTEM", "desc": "Strobe T Interrupted"},
+    "130-019c": {"severity": "INFO",     "category": "SYSTEM", "desc": "Service Files Saved"},
+}
+
+UNKNOWN_ALARM = {"severity": "WARNING", "category": "UNKNOWN", "desc": "Unknown Alarm Code"}
+
+# ==========================================
+# 2. GÉNÉRATEURS DE DONNÉES (SIMULATION)
+# ==========================================
+
+def get_machine_alarms(from_str, until_str):
+    """Génère des alarmes réalistes et les enrichit."""
+    # Simulation de données brutes
+    dates = pd.date_range(start=from_str, end=until_str, periods=15)
+    # On prend quelques codes au hasard dans notre catalogue
+    keys = list(ALARM_CATALOG.keys())
     
-    # --- 1. PYTHON PREPARATION ---
-    fmt = "%Y-%m-%d %H:%M:%S"
-    try:
-        dt_start = datetime.strptime(from_date, fmt)
-        dt_end = datetime.strptime(until_date, fmt)
-    except ValueError:
-        dt_start = datetime.strptime(from_date, "%Y-%m-%d")
-        dt_end = datetime.strptime(until_date, "%Y-%m-%d")
-
-    ts_start = int(dt_start.timestamp())
-    ts_end = int(dt_end.timestamp())
-
-    ms_start = ts_start * 1000
-    ms_end = ts_end * 1000
-
-    # --- 2. OPTIMIZED SQL QUERY ---
-    sql_query = """
-    WITH RawSignal AS (
-        SELECT
-            to_timestamp(floor(CAST(date AS BIGINT) / 1000)) AS timestamp,
-            COUNT(DISTINCT id_var) AS distinct_vars_count
-        FROM
-            public.variable_log_float
-        WHERE
-            CAST(date AS BIGINT) >= :ms_start 
-            AND CAST(date AS BIGINT) <= :ms_end
-        GROUP BY
-            timestamp
-    ),
-    IdleGaps AS (
-        SELECT
-            'True Idle (Off)' AS state,
-            SUM(EXTRACT(EPOCH FROM gap_duration)) / 3600.0 as total_hours
-        FROM (
-            SELECT
-                timestamp - (LAG(timestamp) OVER (ORDER BY timestamp) + interval '1 second') AS gap_duration
-            FROM
-                RawSignal
-        ) AS Gaps
-        WHERE
-            gap_duration > interval '0 seconds'
-    ),
-    SmoothedSignal AS (
-        SELECT
-            timestamp,
-            AVG(distinct_vars_count) OVER (
-                PARTITION BY date(timestamp) 
-                ORDER BY timestamp
-                ROWS BETWEEN 14 PRECEDING AND CURRENT ROW
-            ) AS smoothed_count,
-            ROW_NUMBER() OVER (PARTITION BY date(timestamp) ORDER BY timestamp) as row_num_per_day
-        FROM
-            RawSignal
-    ),
-    ActiveStateTotals AS (
-        SELECT
-            CASE
-                WHEN smoothed_count <= 14 THEN 'Low Activity'
-                WHEN smoothed_count <= 20 THEN 'Intermediate Activity'
-                ELSE 'High Activity'
-            END AS state,
-            (COUNT(*) * 1.0) / 3600.0 as total_hours 
-        FROM
-            SmoothedSignal
-        WHERE
-            row_num_per_day > 14 
-        GROUP BY
-            state
-    )
-    SELECT * FROM IdleGaps
-    UNION ALL
-    SELECT * FROM ActiveStateTotals;
-    """
-    
-    params = {"ms_start": ms_start, "ms_end": ms_end}
-    
-    df = run_query_data(sql_query, params)
+    data = []
+    for d in dates:
+        code = np.random.choice(keys)
+        # On ajoute un peu de hasard pour simuler des 'trous'
+        if np.random.random() > 0.3:
+            data.append({"timestamp": d, "alarm_code": code})
+            
+    df = pd.DataFrame(data)
     
     if df.empty:
-        return pd.DataFrame(columns=['state', 'total_hours'])
-        
-    return df
+        return pd.DataFrame()
 
-def get_machine_alarms(from_date: str, until_date: str) -> pd.DataFrame:
-    """
-    Returns AGGREGATED statistics for alarms.
-    COLUMNS: alarm_code, alarm_text, occurrence_count, last_seen.
-    OPTIMIZATION: Early Filtering (Regex) to skip noise lines.
-    """
+    # ENRICHISSEMENT (Mapping)
+    def lookup(code):
+        return ALARM_CATALOG.get(str(code), UNKNOWN_ALARM)
+
+    enriched = df["alarm_code"].apply(lookup).apply(pd.Series)
+    df_final = pd.concat([df, enriched], axis=1)
     
-    # --- 1. PYTHON PREPARATION ---
-    fmt = "%Y-%m-%d %H:%M:%S"
-    try:
-        dt_start = datetime.strptime(from_date, fmt)
-        dt_end = datetime.strptime(until_date, fmt)
-    except ValueError:
-        dt_start = datetime.strptime(from_date, "%Y-%m-%d")
-        dt_end = datetime.strptime(until_date, "%Y-%m-%d")
+    return df_final
 
-    ts_start = int(dt_start.timestamp())
-    ts_end = int(dt_end.timestamp())
-    ms_start = ts_start * 1000
-    ms_end = ts_end * 1000
+def get_state_times(from_str, until_str):
+    """Simule des états machine."""
+    states = ["PRODUCTION", "True Idle (Off)", "High Activity", "Low Activity", "Intermediate Activity", "ALARM"]
+    data = {
+        "state": states,
+        "total_hours": [np.random.uniform(10, 50) for _ in states]
+    }
+    return pd.DataFrame(data)
 
-    # --- 2. SQL QUERY ---
-    sql_query = r"""
-    WITH raw AS (
-        SELECT
-            to_timestamp(floor(CAST(date AS BIGINT) / 1000)) AS ts,
-            value,
-            LEAD(to_timestamp(floor(CAST(date AS BIGINT) / 1000))) OVER (ORDER BY date) AS next_ts
-        FROM variable_log_string
-        WHERE id_var = 447
-          AND CAST(date AS BIGINT) >= :ms_start 
-          AND CAST(date AS BIGINT) <= :ms_end
-          
-          -- ⚡ EARLY FILTER (Suppression du bruit) ⚡
-          AND value !~ '(PLC00054|PLC00010|PLC01005|PLC00499|PLC00051|PLC00050|PLC00474|PLC00475|2a8-0003|130-019c|PLC00052|PLC00761)'
-    ),
-    flat AS (
-        SELECT
-            r.ts,
-            r.next_ts,
-            (m)[1] AS alarm_code,
-            (m)[2] AS alarm_text
-        FROM raw r
-        CROSS JOIN LATERAL regexp_matches(
-            r.value,
-            '\["([^"]+)","([^"]+)",([0-9]+),([0-9]+),([0-9]+)\]',
-            'g'
-        ) AS m
-        WHERE r.next_ts IS NOT NULL
-    ),
-    segments AS (
-        SELECT
-            alarm_code, alarm_text, ts, next_ts,
-            LAG(next_ts) OVER (PARTITION BY alarm_code, alarm_text ORDER BY ts) AS prev_end
-        FROM flat
-    ),
-    marked AS (
-        SELECT *, CASE WHEN prev_end IS NULL OR prev_end < ts THEN 1 ELSE 0 END AS new_group
-        FROM segments
-    ),
-    islands AS (
-        SELECT *, SUM(new_group) OVER (PARTITION BY alarm_code, alarm_text ORDER BY ts) AS grp
-        FROM marked
-    ),
-    periods AS (
-        SELECT
-            alarm_code,
-            alarm_text,
-            MIN(ts) AS start_time
-            -- on n'a plus besoin de end_time pour la durée
-        FROM islands
-        GROUP BY alarm_code, alarm_text, grp
-    )
-
-    -- OUTPUT: Version Allégée
-    SELECT
-        alarm_code,
-        alarm_text,
-        -- 'reason' supprimé
-        COUNT(*) AS occurrence_count,
-        MAX(start_time) AS last_seen
-        -- 'total_duration' supprimé
-    FROM periods
-    GROUP BY alarm_code, alarm_text
-    ORDER BY occurrence_count DESC;
-    """
-
-    params = {"ms_start": ms_start, "ms_end": ms_end}
-    return run_query_data(sql_query, params)
-
-
-def get_energy_consumption(from_date: str, until_date: str) -> pd.DataFrame:
-    """
-    Retrieves daily aggregated energy consumption.
-    """
-    sql_query = """
-    SELECT
-        date_trunc('day', energy_timestamp)::date AS date,
-        SUM(kwh_value) AS total_energy_kwh
-    FROM
-        energy_log
-    WHERE
-        energy_timestamp >= :start_date AND energy_timestamp <= :end_date
-    GROUP BY
-        1
-    ORDER BY
-        1;
-    """
-    params = {"start_date": from_date, "end_date": until_date}
-    return run_query_data(sql_query, params)
+def get_energy_consumption(from_str, until_str):
+    """Simule une conso d'énergie journalière."""
+    # Conversion string -> datetime pour pandas
+    start = pd.to_datetime(from_str)
+    end = pd.to_datetime(until_str)
+    
+    dates = pd.date_range(start=start, end=end, freq='D')
+    energy = np.random.uniform(10, 100, size=len(dates))
+    
+    # Ajout de pics (spikes)
+    if len(energy) > 5:
+        energy[2] = 150 # Spike
+        energy[4] = 180 # Spike
+        
+    return pd.DataFrame({"date": dates, "total_energy_kwh": energy})
