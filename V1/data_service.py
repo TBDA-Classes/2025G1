@@ -1,31 +1,58 @@
 import pandas as pd
+import pytz # <-- NÉCESSAIRE POUR LA GESTION DU FUSEAU HORAIRE
+
 from datetime import datetime
 from database_dao import run_query_data
 
-def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
+# --- CONSTANTS ---
+# Standard time format for parsing date inputs
+DEFAULT_FMT = "%Y-%m-%d %H:%M:%S"
+FALLBACK_FMT = "%Y-%m-%d"
+
+# --- HELPER FUNCTION ---
+
+def _prepare_date_timestamps(from_date: str, until_date: str) -> tuple[int, int]:
     """
-    Calculates the total time (in Hours) spent in each state.
-    Version: FAST & HONEST (No fake data filling).
+    Converts input date strings into UTC-based start/end milliseconds.
     """
-    
-    # --- 1. PYTHON PREPARATION ---
     fmt = "%Y-%m-%d %H:%M:%S"
+    
     try:
         dt_start = datetime.strptime(from_date, fmt)
         dt_end = datetime.strptime(until_date, fmt)
     except ValueError:
-        dt_start = datetime.strptime(from_date, "%Y-%m-%d")
-        dt_end = datetime.strptime(until_date, "%Y-%m-%d")
+        # Fallback pour date-only input, en forçant les bornes complètes
+        dt_start = datetime.strptime(from_date + " 00:00:00", fmt)
+        dt_end = datetime.strptime(until_date + " 23:59:59", fmt)
 
-    ts_start = int(dt_start.timestamp())
-    ts_end = int(dt_end.timestamp())
+    # 🚨 FIX CRITIQUE : Forcer la date à être interprétée comme UTC
+    utc_tz = pytz.utc
+    dt_start_utc = utc_tz.localize(dt_start)
+    dt_end_utc = utc_tz.localize(dt_end)
 
-    ms_start = ts_start * 1000
-    ms_end = ts_end * 1000
+    # Le timestamp calculé sera désormais universel
+    ms_start = int(dt_start_utc.timestamp()) * 1000
+    ms_end = int(dt_end_utc.timestamp()) * 1000
+    
+    return ms_start, ms_end
+    return ms_start, ms_end
 
-    # --- 2. OPTIMIZED SQL QUERY ---
+# ----------------------------------------------------------------------
+# 📈 CORE DATA SERVICE FUNCTIONS
+# ----------------------------------------------------------------------
+
+def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
+    """
+    Calculates the total time (in Hours) spent in each state based on 
+    distinct variable count and signal gaps.
+    Version: FAST & HONEST (No fake data filling).
+    """
+    
+    ms_start, ms_end = _prepare_date_timestamps(from_date, until_date)
+
     sql_query = """
     WITH RawSignal AS (
+        -- 1. Aggregate: Count distinct variables per second-timestamp
         SELECT
             to_timestamp(floor(CAST(date AS BIGINT) / 1000)) AS timestamp,
             COUNT(DISTINCT id_var) AS distinct_vars_count
@@ -38,11 +65,13 @@ def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
             timestamp
     ),
     IdleGaps AS (
+        -- 2. Calculate True Idle (Off) time via Gaps in the signal
         SELECT
             'True Idle (Off)' AS state,
             SUM(EXTRACT(EPOCH FROM gap_duration)) / 3600.0 as total_hours
         FROM (
             SELECT
+                -- Calculate duration between the current timestamp and (previous timestamp + 1s)
                 timestamp - (LAG(timestamp) OVER (ORDER BY timestamp) + interval '1 second') AS gap_duration
             FROM
                 RawSignal
@@ -51,18 +80,20 @@ def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
             gap_duration > interval '0 seconds'
     ),
     SmoothedSignal AS (
+        -- 3. Calculate Smoothed Signal for Activity Classification
         SELECT
             timestamp,
             AVG(distinct_vars_count) OVER (
                 PARTITION BY date(timestamp) 
                 ORDER BY timestamp
-                ROWS BETWEEN 14 PRECEDING AND CURRENT ROW
+                ROWS BETWEEN 14 PRECEDING AND CURRENT ROW -- Moving Average over 15 points
             ) AS smoothed_count,
             ROW_NUMBER() OVER (PARTITION BY date(timestamp) ORDER BY timestamp) as row_num_per_day
         FROM
             RawSignal
     ),
     ActiveStateTotals AS (
+        -- 4. Classify Active States based on the smoothed count
         SELECT
             CASE
                 WHEN smoothed_count <= 14 THEN 'Low Activity'
@@ -73,17 +104,17 @@ def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
         FROM
             SmoothedSignal
         WHERE
-            row_num_per_day > 14 
+            row_num_per_day > 14 -- Ignore initial 14 points (warm-up period for moving average)
         GROUP BY
             state
     )
+    -- Final Output: Combine Idle time and Active times
     SELECT * FROM IdleGaps
     UNION ALL
     SELECT * FROM ActiveStateTotals;
     """
     
     params = {"ms_start": ms_start, "ms_end": ms_end}
-    
     df = run_query_data(sql_query, params)
     
     if df.empty:
@@ -91,30 +122,19 @@ def get_state_times(from_date: str, until_date: str) -> pd.DataFrame:
         
     return df
 
+# ----------------------------------------------------------------------
+
 def get_machine_alarms(from_date: str, until_date: str) -> pd.DataFrame:
     """
-    Returns AGGREGATED statistics for alarms.
-    COLUMNS: alarm_code, alarm_text, occurrence_count, last_seen.
-    OPTIMIZATION: Early Filtering (Regex) to skip noise lines.
+    Returns AGGREGATED statistics for alarms (occurrence_count, last_seen).
+    Uses Islands and Gaps logic to count distinct incidents.
     """
     
-    # --- 1. PYTHON PREPARATION ---
-    fmt = "%Y-%m-%d %H:%M:%S"
-    try:
-        dt_start = datetime.strptime(from_date, fmt)
-        dt_end = datetime.strptime(until_date, fmt)
-    except ValueError:
-        dt_start = datetime.strptime(from_date, "%Y-%m-%d")
-        dt_end = datetime.strptime(until_date, "%Y-%m-%d")
+    ms_start, ms_end = _prepare_date_timestamps(from_date, until_date)
 
-    ts_start = int(dt_start.timestamp())
-    ts_end = int(dt_end.timestamp())
-    ms_start = ts_start * 1000
-    ms_end = ts_end * 1000
-
-    # --- 2. SQL QUERY ---
     sql_query = r"""
     WITH raw AS (
+        -- 1. Filter Raw String Log (Variable 447)
         SELECT
             to_timestamp(floor(CAST(date AS BIGINT) / 1000)) AS ts,
             value,
@@ -128,6 +148,7 @@ def get_machine_alarms(from_date: str, until_date: str) -> pd.DataFrame:
           AND value !~ '(PLC00054|PLC00010|PLC01005|PLC00499|PLC00051|PLC00050|PLC00474|PLC00475|2a8-0003|130-019c|PLC00052|PLC00761)'
     ),
     flat AS (
+        -- 2. Extract Alarm Code and Text using Regex
         SELECT
             r.ts,
             r.next_ts,
@@ -142,37 +163,43 @@ def get_machine_alarms(from_date: str, until_date: str) -> pd.DataFrame:
         WHERE r.next_ts IS NOT NULL
     ),
     segments AS (
+        -- 3. Define Segments and Identify Previous End Time
         SELECT
             alarm_code, alarm_text, ts, next_ts,
             LAG(next_ts) OVER (PARTITION BY alarm_code, alarm_text ORDER BY ts) AS prev_end
         FROM flat
     ),
     marked AS (
-        SELECT *, CASE WHEN prev_end IS NULL OR prev_end < ts THEN 1 ELSE 0 END AS new_group
+        -- 4. Mark the Start of a New Incident (Gap in Signal)
+        SELECT *, 
+               CASE 
+                   WHEN prev_end IS NULL OR prev_end < ts THEN 1 
+                   ELSE 0 
+               END AS new_group
         FROM segments
     ),
     islands AS (
-        SELECT *, SUM(new_group) OVER (PARTITION BY alarm_code, alarm_text ORDER BY ts) AS grp
+        -- 5. Group Consecutive Records into the Same Incident (Island)
+        SELECT *, 
+               SUM(new_group) OVER (PARTITION BY alarm_code, alarm_text ORDER BY ts) AS grp
         FROM marked
     ),
     periods AS (
+        -- 6. Define the Start Time for each unique Incident (Group)
         SELECT
             alarm_code,
             alarm_text,
             MIN(ts) AS start_time
-            -- duration is no longer needed
         FROM islands
         GROUP BY alarm_code, alarm_text, grp
     )
 
-    -- OUTPUT: Light Version
+    -- FINAL OUTPUT: Aggregate incidents by code/text
     SELECT
         alarm_code,
         alarm_text,
-        -- 'reason' removed
         COUNT(*) AS occurrence_count,
         MAX(start_time) AS last_seen
-        -- 'total_duration' removed
     FROM periods
     GROUP BY alarm_code, alarm_text
     ORDER BY occurrence_count DESC;
@@ -181,77 +208,106 @@ def get_machine_alarms(from_date: str, until_date: str) -> pd.DataFrame:
     params = {"ms_start": ms_start, "ms_end": ms_end}
     return run_query_data(sql_query, params)
 
+# ----------------------------------------------------------------------
+
 def get_energy_consumption(from_date: str, until_date: str) -> pd.DataFrame:
     """
-    Calculates Energy (kWh) from Load Percentage (Variable 630).
+    Calculates Energy (kWh) from Load Percentage (Variable 630) using the
+    Islands & Gaps method (to identify distinct runs).
     Data Team Formula: (Value% / 100) * 15kW * Hours.
     """
-    # --- 1. PYTHON PREPARATION (Dates -> Milliseconds) ---
-    fmt = "%Y-%m-%d %H:%M:%S"
-    try:
-        dt_start = datetime.strptime(from_date, fmt)
-        dt_end = datetime.strptime(until_date, fmt)
-    except ValueError:
-        dt_start = datetime.strptime(from_date, "%Y-%m-%d")
-        dt_end = datetime.strptime(until_date, "%Y-%m-%d")
+    ms_start, ms_end = _prepare_date_timestamps(from_date, until_date)
 
-    # Add margin to catch the point just before the start (for continuity)
-    ts_start = int(dt_start.timestamp())
-    ts_end = int(dt_end.timestamp())
-    ms_start = ts_start * 1000
-    ms_end = ts_end * 1000
-
-    # --- 2. SQL QUERY ---
-    # Based on '00_Duration_and_energy_per_day' file
     sql_query = """
-    WITH RawData AS (
-        SELECT 
-            to_timestamp(date / 1000.0) as ts,
-            GREATEST(LEAST(value, 100), 0) as pct -- Clamp value between 0 and 100%
-        FROM variable_log_float
-        WHERE id_var = 630  -- Variable: MANDRINO_CONSUMO_VISUALIZADO
-          AND date >= :ms_start 
-          AND date <= :ms_end
+    WITH params AS (
+        SELECT 15.0::float AS power_kw, 0.0::float AS on_threshold
     ),
-    TimeGaps AS (
-        SELECT 
-            ts,
-            LEAD(ts) OVER (ORDER BY ts) as ts_next,
-            pct
-        FROM RawData
-    ),
-    ValidIntervals AS (
-        SELECT * FROM TimeGaps
-        WHERE ts_next IS NOT NULL 
-          AND ts_next > ts
-          -- Ignore data gaps > 1 hour (machine off or connection lost)
-          AND EXTRACT(EPOCH FROM (ts_next - ts)) < 3600 
-    ),
-    DailySplit AS (
-        -- Split intervals crossing midnight for accurate attribution
+    s AS (
+        -- 1. Filter raw data, clamp percentage, and convert date to timestamp
         SELECT
-            (gs)::date as date,
-            EXTRACT(EPOCH FROM (
-                LEAST(ts_next, gs + interval '1 day') - GREATEST(ts, gs)
-            )) / 3600.0 as hours,
+            to_timestamp(l.date/1000.0) AS ts,
+            GREATEST(LEAST(l.value::float, 100), 0) AS pct
+        FROM variable_log_float l
+        
+        -- Utilizing JOIN on variable name for safety, but parameter must match Python logic
+        JOIN variable v ON v.id = l.id_var 
+        WHERE v.name = 'MANDRINO_CONSUMO_VISUALIZADO'
+          AND CAST(l.date AS BIGINT) >= :ms_start 
+          AND CAST(l.date AS BIGINT) <= :ms_end
+          AND l.value = l.value -- Filter out NaN
+    ),
+    o AS (
+        -- 2. Identify the next timestamp and if the machine is 'on'
+        SELECT
+            ts,
+            LEAD(ts) OVER (ORDER BY ts) AS ts_next,
+            pct,
+            (pct > (SELECT on_threshold FROM params)) AS is_on
+        FROM s
+    ),
+    iv AS (
+        -- 3. Filter for valid intervals (no NULL next timestamp)
+        SELECT *
+        FROM o
+        WHERE ts_next IS NOT NULL AND ts_next > ts
+    ),
+    mark AS (
+        -- 4. Mark the start of a new 'run' (transition from off -> on)
+        SELECT
+            *,
+            CASE
+              WHEN is_on AND (LAG(is_on) OVER (ORDER BY ts) IS DISTINCT FROM TRUE) THEN 1
+              ELSE 0
+            END AS start_flag
+        FROM iv
+    ),
+    runs AS (
+        -- 5. Group consecutive 'on' segments into a unique run_id
+        SELECT
+            *,
+            SUM(start_flag) OVER (ORDER BY ts
+              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS run_id
+        FROM mark
+        WHERE is_on 
+    ),
+    split AS (
+        -- 6. Split intervals crossing midnight for accurate daily attribution
+        SELECT
+            (gs)::timestamp AS day_start,
+            GREATEST(ts, gs) AS seg_start,
+            LEAST(ts_next, gs + interval '1 day') AS seg_end,
+            run_id,
             pct
-        FROM ValidIntervals
+        FROM runs
         JOIN LATERAL generate_series(
-            date_trunc('day', ts),
-            date_trunc('day', ts_next),
-            interval '1 day'
-        ) gs ON TRUE
+              date_trunc('day', ts),
+              date_trunc('day', ts_next),
+              interval '1 day'
+            ) AS gs ON TRUE
+        WHERE ts_next > ts
+    ),
+    seg AS (
+        -- 7. Calculate total hours and energy (kWh) per segment
+        SELECT
+            day_start::date AS day,
+            run_id,
+            EXTRACT(EPOCH FROM (seg_end - seg_start))/3600.0 AS hours,
+            (pct/100.0) * (SELECT power_kw FROM params)
+              * EXTRACT(EPOCH FROM (seg_end - seg_start))/3600.0 AS energy_kwh
+        FROM split
     )
+    -- FINAL OUTPUT: Total Energy per day
     SELECT
-        date,
-        SUM((pct / 100.0) * 15.0 * hours) as total_energy_kwh
-    FROM DailySplit
-    GROUP BY date
-    ORDER BY date;
+        day,
+        SUM(energy_kwh) AS total_energy_kwh
+        -- total_duration_h and run_count columns are available but excluded 
+        -- to match Streamlit application's needs (only total_energy_kwh is used).
+    FROM seg
+    GROUP BY day
+    ORDER BY day;
     """
     
     params = {"ms_start": ms_start, "ms_end": ms_end}
-    
     df = run_query_data(sql_query, params)
     
     if df.empty:

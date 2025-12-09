@@ -49,6 +49,8 @@ ACTIVE_TAGS = ['RUN', 'ACTIVE', 'AUTO', 'PRODUCTION', 'WORKING', 'HIGH ACTIVITY'
 # ----------------------------------
 # 4. DATA LOADING & CLEANING
 # ----------------------------------
+# appHuit.py: clean_dataframe
+
 def clean_dataframe(df):
     """Adapt SQL columns to App standard."""
     if df.empty: return df
@@ -56,15 +58,12 @@ def clean_dataframe(df):
     df.columns = [c.lower().strip() for c in df.columns]
     
     rename_map = {
-        'etat': 'state', 
-        'total_hours': 'total_hours', 
-        'total_energy_kwh': 'total_energy_kwh',
-        'alarm_code': 'alarm_code',
-        'alarm_text': 'description',
-        'occurrence_count': 'occurrence_count',
+        # ... (other mappings) ...
         'last_seen': 'date',
-        'timestamp': 'date', 'jour': 'date',
-        'idle_hours': 'idle_hours' # Kept for mapping if other functions need it
+        'timestamp': 'date', 
+        'jour': 'date',
+        'day': 'date',    # <--- ASSUREZ-VOUS QUE CETTE LIGNE EST PRÉSENTE
+        'idle_hours': 'idle_hours'
     }
     
     cols_to_rename = {k: v for k, v in rename_map.items() if k in df.columns}
@@ -74,7 +73,6 @@ def clean_dataframe(df):
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
     
     return df
-
 @st.cache_data(show_spinner=False)
 def load_data(start, end):
     s_str = f"{start} 00:00:00"
@@ -162,17 +160,19 @@ def render_home(df_s, df_e, df_a):
     st.title("🏠 Overview")
     
     # --- 1. Global KPIs ---
+    
     nb_crit = 0
-    if not df_a.empty:
+    # Ajout de la vérification 'df_a is not None'
+    if df_a is not None and not df_a.empty:
         df_a['severity'] = df_a.apply(infer_severity, axis=1)
         mask_crit = df_a['severity'] == 'CRITIQUE'
         if 'occurrence_count' in df_a.columns:
             nb_crit = df_a[mask_crit]['occurrence_count'].sum()
         else:
             nb_crit = len(df_a[mask_crit])
-
-    kpis = get_kpis(df_s, df_e, df_a)
     
+    kpis = get_kpis(df_s, df_e, df_a)
+        
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total Time", f"{kpis['total_h']:.1f} h")
     c2.metric("Active Time", f"{kpis['active_h']:.1f} h")
