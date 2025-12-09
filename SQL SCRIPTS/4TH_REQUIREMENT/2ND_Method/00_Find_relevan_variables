@@ -1,0 +1,3 @@
+SELECT *
+FROM units
+WHERE name ILIKE '%MANDRINO%';
