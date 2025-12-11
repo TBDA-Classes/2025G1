@@ -209,11 +209,10 @@ def get_machine_alarms(from_date: str, until_date: str) -> pd.DataFrame:
     return run_query_data(sql_query, params)
 
 # ----------------------------------------------------------------------
-
 def get_energy_consumption(from_date: str, until_date: str) -> pd.DataFrame:
     """
-    Calculates Energy (kWh) from Load Percentage (Variable 630) using the
-    Islands & Gaps method (to identify distinct runs).
+    Calculates Energy (kWh) from Load Percentage (Variable 260 - CONFIRMÉ PAR DATA TEAM) 
+    using the Islands & Gaps method (to identify distinct runs).
     Data Team Formula: (Value% / 100) * 15kW * Hours.
     """
     ms_start, ms_end = _prepare_date_timestamps(from_date, until_date)
@@ -229,9 +228,8 @@ def get_energy_consumption(from_date: str, until_date: str) -> pd.DataFrame:
             GREATEST(LEAST(l.value::float, 100), 0) AS pct
         FROM variable_log_float l
         
-        -- Utilizing JOIN on variable name for safety, but parameter must match Python logic
-        JOIN variable v ON v.id = l.id_var 
-        WHERE v.name = 'MANDRINO_CONSUMO_VISUALIZADO'
+        -- FIX CRITIQUE: Utilisation de l'ID 260 au lieu de la jointure par nom
+        WHERE l.id_var = 260 
           AND CAST(l.date AS BIGINT) >= :ms_start 
           AND CAST(l.date AS BIGINT) <= :ms_end
           AND l.value = l.value -- Filter out NaN
@@ -296,12 +294,10 @@ def get_energy_consumption(from_date: str, until_date: str) -> pd.DataFrame:
               * EXTRACT(EPOCH FROM (seg_end - seg_start))/3600.0 AS energy_kwh
         FROM split
     )
-    -- FINAL OUTPUT: Total Energy per day
+    -- FINAL OUTPUT: Total Energy per day (used by Streamlit)
     SELECT
         day,
         SUM(energy_kwh) AS total_energy_kwh
-        -- total_duration_h and run_count columns are available but excluded 
-        -- to match Streamlit application's needs (only total_energy_kwh is used).
     FROM seg
     GROUP BY day
     ORDER BY day;
